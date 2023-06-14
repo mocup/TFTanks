@@ -1,5 +1,5 @@
 /*
- * File:        TFTanks
+ *  File: TFTanks
  *  Morgan Cupp (mmc274), Stefen Pegels (sgp62), Maria Martucci (mlm423)
  *
  */
@@ -24,60 +24,55 @@
 #define Fs 44000
 #define WAIT {}
 
-#define RAD(angle) (double)(((angle)*M_PI)/180)
+#define RAD(angle) (double)(((angle)*M_PI)/180) // convert degrees to radians
 
+// screen dimensions
 #define TFT_HEIGHT 239
 #define TFT_WIDTH  319
 
+// tank dimensions
 #define TANK_WIDTH 20
 #define TANK_HEIGHT 10
-#define STEP_SIZE 5
-//
 
-unsigned int turn = 1; //Which tank's turn it is (1 or 2)
+#define STEP_SIZE 5 // step size for tank movements
 
-volatile int fire = 0; //Whether or not a projectile is in the air (0 or 1)
-
-volatile fix power = 4.5; //Scalar for projectile initial velocity (1 to 9)
-
-volatile int land[320]; //Array holding y positions of each land pixel
-int land_height = 80; //Initial default land height
-
-const fix g = (fix) 0.1; //Grav constant
-
-volatile int steps = 5; //Number of steps per turn per player (5 to 0)
-
-volatile int new_game = 0; //Whether or not the new game button was pressed
-
-volatile int end_screen =0;//Whether or not we are on the end screen
-
-volatile int explosion = 0;//Turns to 1 when a projectile hits the ground/tank
-
-volatile int start_screen = 1;//1 Until Start Game button is pressed
-
-volatile int start_game = 0;//Used to check state of game at start
+unsigned int turn = 1; // which tank's turn it is (1 or 2)
+volatile int fire = 0; // whether or not a projectile is in the air (0 or 1)
+volatile fix power = 4.5; // scalar for projectile initial velocity (1 to 9)
+volatile int land[320]; // array holding y positions of each land pixel
+int land_height = 80; // initial default land height
+const fix g = (fix) 0.1; // gravity constant
+volatile int steps = 5; // number of steps per turn per player (5 to 0)
+volatile int new_game = 0; // whether or not the new game button was pressed
+volatile int end_screen =0; // whether or not we are on the end screen
+volatile int explosion = 0; // turns to 1 when a projectile hits the ground/tank
+volatile int start_screen = 1; // 1 until Start Game button is pressed
+volatile int start_game = 0; // used to check state of game at start
 
 char tft_str_buffer[60];
 char buffer[60];
 
-typedef struct tftank //Structure to represent a tank
+
+// structure to represent a tank
+typedef struct tftank
 {
-    int x; // Represents middle x position of tank
-    int y; //Represent bottom y middle position of tank
-    int angle; // Invariant 0..180
-    int width; //Tank bottom width
-    int height; //Height of tank at midpoint
-    int vertex_x; //X position of top of tank/vertex of cannon
-    int vertex_y; //Y position of top of tank/vertex of cannon
-    fix shell_x; //X position of tank's projectile
-    fix shell_y; //Y position of tank's projectile
-    fix shell_vx; //Velocity of projectile in x direction
-    fix shell_vy; //Velocity of projectile in y direction
-    int health; //Tank health, checked for endgame conditions
-    
+    int x; // represents middle x position of tank
+    int y; // represents bottom y position of tank
+    int angle; // cannon angle (invariant 0..180)
+    int width; // tank bottom width
+    int height; // height of tank at midpoint
+    int vertex_x; // x position of top of tank/vertex of cannon
+    int vertex_y; // y position of top of tank/vertex of cannon
+    fix shell_x; // x position of tank's projectile
+    fix shell_y; // y position of tank's projectile
+    fix shell_vx; // velocity of projectile in x direction
+    fix shell_vy; // velocity of projectile in y direction
+    int health; // tank health, checked for endgame conditions
 } tftank;
 
+
 tftank t1, t2;
+
 
 // initialize everything for a new game
 void restart_game() {
@@ -90,13 +85,9 @@ void restart_game() {
     explosion = 0;
     start_game = 0;
     start_screen = 0;
-    
-    
    
-    // redraw display
-    tft_fillScreen(ILI9340_BLACK);
-    //srand(PT_GET_TIME());
-    tft_draw_level(); //Initializes level
+    tft_fillScreen(ILI9340_BLACK); // redraw display
+    tft_draw_level(); // initializes level
 
     // re-initialize tanks
     init_tank(&t1, 40, TANK_WIDTH, TANK_HEIGHT, 45, ILI9340_WHITE, 3);
@@ -110,59 +101,54 @@ void restart_game() {
 }
 
 
-
+// initialize tanks at start of game
 void init_tank(struct tftank *t, int x, int w, int h, int ang, unsigned short color, int health){
-    //Sets up initial tank attribute values
+    // set up initial tank attribute values
     t->x = x;
-    t->y = land[x]-1; //Y position expressed relative to land position at midpoint
+    t->y = land[x]-1; // y position expressed relative to land position at midpoint
     t->width = w;
     t->height = h;
     t->angle = ang;
     t->vertex_x = x;
     t->vertex_y = t->y-(t->height);
-    t->shell_x = (fix) t->x+15*cos(RAD(ang)); //Position set based on tank cannon's rotation
+    t->shell_x = (fix) t->x+15*cos(RAD(ang)); // position set based on tank cannon's rotation
     t->shell_y = (fix) t->y-h - 15*sin(RAD(ang));
     t->shell_vx = 0;
     t->shell_vy = 0;
     t->health = health;
-    tft_fillTriangle(x-w/2,t->y, x, t->y-h, x+w/2, t->y, color);//Tank body
-    tft_drawLine(t->x, t->y-h, (int) t->x+15*cos(RAD(ang)), (int) t->y-h - 15*sin(RAD(ang)), color);//Cannon
-    
+    tft_fillTriangle(x-w/2,t->y, x, t->y-h, x+w/2, t->y, color); // draw tank body
+    tft_drawLine(t->x, t->y-h, (int) t->x+15*cos(RAD(ang)), (int) t->y-h - 15*sin(RAD(ang)), color);// draw cannon
 }
 
+
+// move tank cannon to specified angle
 void aim_cannon(struct tftank *t, int new_ang){
-    // if cannon tip is above land, redraw black
-    fix midx =  (fix) t->vertex_x+7.5*cos(RAD(new_ang)); //Check midpoint of cannon for interference with terrain
+    fix midx =  (fix) t->vertex_x+7.5*cos(RAD(new_ang)); // check midpoint of cannon for interference with terrain
     fix midy =  (fix) t->vertex_y-7.5*sin(RAD(new_ang));
-    //if (((int) t->vertex_y - 15*sin(RAD(new_ang))) < land[(int) (t->vertex_x + 15*cos(RAD(new_ang)))]) {
-    if ( ((int) midy) < land[(int) midx]) { //When the cannon tip is not inside the land, redraw it with the new angle
+    if ( ((int) midy) < land[(int) midx]) { // when the cannon tip is not inside the land, redraw it with the new angle
         tft_drawLine(t->vertex_x, t->vertex_y, (int) t->vertex_x+15*cos(RAD(t->angle)), (int) t->vertex_y - 15*sin(RAD(t->angle)), ILI9340_BLACK);
-        //} else {
-        //    tft_drawLine(t->vertex_x, t->vertex_y, (int) t->vertex_x+15*cos(RAD(t->angle)), (int) t->vertex_y - 15*sin(RAD(t->angle)), ILI9340_BLUE);
-        //}
         tft_drawLine(t->vertex_x, t->vertex_y, (int) t->vertex_x+15*cos(RAD(new_ang)), (int) t->vertex_y - 15*sin(RAD(new_ang)), ILI9340_WHITE);
         t->angle = new_ang;
-        t->shell_x =  (fix) t->vertex_x+15*cos(RAD(t->angle));//Put cannon projectile at the end of the new cannon
+        t->shell_x =  (fix) t->vertex_x+15*cos(RAD(t->angle)); // put cannon projectile at the end of the new cannon
         t->shell_y = (fix) t->vertex_y-15*sin(RAD(t->angle));
     }
-    
 }
 
 
-
+// move tank a step either left or right
 void move_step(struct tftank *t, int direction){
-    //Function to move the tank by a step
-    tft_fillTriangle((t->x)-((t->width)/2),t->y, t->x, t->y-(t->height), (t->x)+((t->width)/2), t->y, ILI9340_BLACK); //Un-draws previous tank position
+    tft_fillTriangle((t->x)-((t->width)/2),t->y, t->x, t->y-(t->height), (t->x)+((t->width)/2), t->y, ILI9340_BLACK); // un-draws previous tank position
     tft_drawLine(t->vertex_x, t->vertex_y, (int) t->vertex_x+15*cos(RAD(t->angle)), (int) t->vertex_y - 15*sin(RAD(t->angle)), ILI9340_BLACK);
-    //moving  by half a tank width, 10
-    
+
     // redraw land around moving tank
     int i;
     for (i = (int) (t->vertex_x-TANK_WIDTH/2); i < (int) (t->vertex_x+TANK_WIDTH/2); i++){
         tft_drawFastVLine(i, land[i], a_c(land[i]), ILI9340_BLUE);
     }
     
-    int new_x = (direction == 1)? t->x - STEP_SIZE : t->x + STEP_SIZE;
+    // moving by half a tank width, 10
+    int new_x = (direction == 1) ? t->x - STEP_SIZE : t->x + STEP_SIZE;
+
     // left tank is moving and not off screen and not passing right tank
     if ((turn == 1) && (new_x > TANK_WIDTH/2) && (new_x < t2.x - TANK_WIDTH)) {
         t->x = new_x;
@@ -180,13 +166,11 @@ void move_step(struct tftank *t, int direction){
         t->y = new_y;
     }
     
-    //Redraw once new attributes have been set
+    // redraw once new attributes have been set
     tft_fillTriangle((t->x)-((t->width)/2),t->y, t->x, t->y-(t->height), (t->x)+((t->width)/2), t->y, ILI9340_WHITE);
     tft_drawLine(t->vertex_x, t->vertex_y, (int) t->vertex_x+15*cos(RAD(t->angle)), (int) t->vertex_y - 15*sin(RAD(t->angle)), ILI9340_WHITE);
     t->shell_x = (fix) t->vertex_x+15*cos(RAD(t->angle));
     t->shell_y = (fix) t->vertex_y-15*sin(RAD(t->angle));
-    
-    
 }
 
 
@@ -217,52 +201,40 @@ int collision() {
     }
 }
 
-void printLine(int line_number, char* print_buffer, short text_color, short back_color){
-    // line number 0 to 31 
-    /// !!! assumes tft_setRotation(0);
-    // print_buffer is the string to print
-    int v_pos;
-    v_pos = line_number * 10 ;
-    // erase the pixels
-    tft_fillRoundRect(0, v_pos, 239, 8, 1, back_color);// x,y,w,h,radius,color
-    tft_setTextColor(text_color); 
-    tft_setCursor(0, v_pos);
-    tft_setTextSize(1);
-    tft_writeString(print_buffer);
-}
 
-
+// display a line on the screen
 void printLine2(int text_size, int cursor_pos, int v_pos, char* print_buffer, short text_color, short back_color){
     // line number 0 to 31 
     /// !!! assumes tft_setRotation(0);
     // print_buffer is the string to print
     // erase the pixels
-    tft_fillRoundRect(cursor_pos, v_pos, 239, 20, 1, back_color);// x,y,w,h,radius,color
+    tft_fillRoundRect(cursor_pos, v_pos, 239, 20, 1, back_color); // x,y,w,h,radius,color
     tft_setTextColor(text_color); 
     tft_setCursor(cursor_pos, v_pos);
     tft_setTextSize(text_size);
     tft_writeString(print_buffer);
 }
 
+
+// modifies land in the event of a projectile collision
 void destroy_land(int xpos){
-    //Modifies land in the event of a projectile collision
-    int startx = xpos - 10;//10 pixels to the left and right of xpos (impact point)
+    int startx = xpos - 10; // 10 pixels to the left and right of xpos (impact point)
     int endx = xpos+10;
-    if (startx < 0) startx = 0;
+    if (startx < 0) startx = 0; // check boundary conditions at edge of display
     if (endx > 319) endx = 319;
     int i;
-    int decrement;//How much the land will be decreased by
+    int decrement; // amount the land will be decreased by
     for(i = startx; i <= endx; i++){
-        //tft_drawFastVLine(i, land[i], a_c(land[i]), ILI9340_BLACK);
-        //Draws over the land in black and redraws new shorter VLines, also setting land[i] positions to new values
         tft_drawFastVLine(i, 0, TFT_HEIGHT, ILI9340_BLACK);
-        decrement = (int) ((power/9)*30);
-        land[i] += decrement;
-        if (land[i] >= TFT_HEIGHT) land[i] = TFT_HEIGHT;
+        decrement = (int) ((power/9)*30); // destruction proportional to projectile power
+        land[i] += decrement; // lower all land in destruction area
+        if (land[i] >= TFT_HEIGHT) land[i] = TFT_HEIGHT; // check boundary conditions at bottom of display
         tft_drawFastVLine(i, land[i], a_c(land[i]), ILI9340_BLUE);
     }
 }
 
+
+// redraw tanks on display
 void redraw_tanks(){
     //t1
     tft_fillTriangle((t1.x)-((t1.width)/2),t1.y, t1.x, t1.y-(t1.height), (t1.x)+((t1.width)/2), t1.y, ILI9340_BLACK);
@@ -273,14 +245,15 @@ void redraw_tanks(){
     tft_fillTriangle((t2.x)-((t2.width)/2),t2.y, t2.x, t2.y-(t2.height), (t2.x)+((t2.width)/2), t2.y, ILI9340_BLACK);
     tft_drawLine(t2.vertex_x, t2.vertex_y, (int) t2.vertex_x+15*cos(RAD(t2.angle)), (int) t2.vertex_y - 15*sin(RAD(t2.angle)), ILI9340_BLACK);
     init_tank(&t2, t2.x, t2.width, t2.height, t2.angle, ILI9340_WHITE, t2.health);
-    
 }
 
+
+// initializes a new game
 void init_game(){
     tft_fillScreen(ILI9340_BLACK);
-    tft_draw_level(); //Initializes level
+    tft_draw_level(); // initializes level
     
-    //Create tanks with default parameters
+    // create tanks with default parameters
     init_tank(&t1, 40, TANK_WIDTH, TANK_HEIGHT, 45, ILI9340_WHITE, 3);
     init_tank(&t2, 280, TANK_WIDTH, TANK_HEIGHT, 135, ILI9340_WHITE, 3);
 }
@@ -296,22 +269,21 @@ static PT_THREAD (protothread_animate(struct pt *pt))
 {
   PT_BEGIN(pt);
   int begin_time;
-  // maybe put initialization here
-
   static float increment = 1;
   
   while(1) {
    
-    begin_time = PT_GET_TIME(); //start timing here
+    begin_time = PT_GET_TIME(); // start timing here
     static tftank *t;
     
-    if(start_screen == 1){ //Initialization screen with no threads running
+    // initialization screen with no threads running
+    if(start_screen == 1){
         tft_fillScreen(ILI9340_BLACK);
-
         sprintf(buffer, "TFTANKS!");
         printLine2(5, 20, 100, buffer, ILI9340_RED, ILI9340_BLACK);
         sprintf(buffer, "Press START to Begin");
         printLine2(2, 20, 150, buffer, ILI9340_WHITE, ILI9340_BLACK);
+
         // wait for user to start new game
         PT_YIELD_UNTIL(pt, start_game == 1);
         
@@ -319,101 +291,93 @@ static PT_THREAD (protothread_animate(struct pt *pt))
         srand(PT_GET_TIME());
         init_game();
         begin_time = PT_GET_TIME();
-
     }
     
-
-    if (fire == 1) { //Once the fire button has been pressed on the python interface
-        tft_drawLine(t1.vertex_x, t1.vertex_y, (int) t1.vertex_x+15*cos(RAD(t1.angle)), (int) t1.vertex_y - 15*sin(RAD(t1.angle)), ILI9340_WHITE); //Redraw cannons in place every frame
+    // fire button has been pressed on the python interface
+    if (fire == 1) { 
+        // redraw cannons in place every frame
+        tft_drawLine(t1.vertex_x, t1.vertex_y, (int) t1.vertex_x+15*cos(RAD(t1.angle)), (int) t1.vertex_y - 15*sin(RAD(t1.angle)), ILI9340_WHITE);
         tft_drawLine(t2.vertex_x, t2.vertex_y, (int) t2.vertex_x+15*cos(RAD(t2.angle)), (int) t2.vertex_y - 15*sin(RAD(t2.angle)), ILI9340_WHITE);
-        if (turn == 1) {//Check which tank we are firing from
+
+        // check which tank we are firing from
+        if (turn == 1) {
             t = &t1;
         } else {
             t = &t2;
         }
-        if (t->shell_y > 0) tft_fillCircle((int)t->shell_x, (int)t->shell_y, 2,ILI9340_BLACK);//Projectile represented as a circle
+        if (t->shell_y > 0) tft_fillCircle((int)t->shell_x, (int)t->shell_y, 2,ILI9340_BLACK); // animate projectile when on screen
 
-        //Projectile motion physics
+        // projectile motion physics- update shell location and velocity
         fix x = (fix) t->shell_x;
         fix y = (fix) t->shell_y;
+
         t->shell_vy = t->shell_vy + g;
 
         x = x + t->shell_vx;
-
         y = y + t->shell_vy;
-        
         t->shell_x = x;
         t->shell_y = y;
         
         // don't draw shell if its y-value is negative
         if (t->shell_y > 0 && t->shell_y < land[(int)t->shell_x]) {
            tft_fillCircle((int)t->shell_x, (int) t->shell_y, 2, ILI9340_WHITE); 
-        } //Some of these conditional checks might be useless --recheck
-        
-//        sprintf(buffer, "%d ", (int) t->shell_y);
-//        printLine2(3, 10,3, buffer, ILI9340_WHITE, ILI9340_BLACK);
-
-        
+        }
+  
         // check for hit
         int hit = collision();
         
-        //If hit, transition to explosion condition (ground vs tank)
+        // if tank or ground is hit, transition to explosion condition
         if (hit == 1) {
             fire = 0;
             explosion = 1;
-      
-            t1.health -= 1;
+            t1.health -= 1; // t1 hit and loses health
             printf("$02 %d\r", t1.health);
 
         }
         else if (hit == 2) {
             fire = 0;
             explosion = 1;
-            
-            t2.health -= 1;
+            t2.health -= 1; // t2 hit and loses health
             printf("$03 %d\r", t2.health);
             
-        } //if projectile x position is off TFT, stop drawing it
+        } // if projectile x position is off TFT, stop drawing it
         else if (t->shell_x < 5 || t->shell_x > (TFT_WIDTH-5)) {
             tft_fillCircle((int)t->shell_x, (int) t->shell_y, 2, ILI9340_BLACK);
             fire = 0;
             turn = 2 - turn + 1; // change turn
             printf("$04 %d\r", turn);
-            t->shell_x = (fix) t->vertex_x+15*cos(RAD(t->angle));
+            t->shell_x = (fix) t->vertex_x+15*cos(RAD(t->angle)); // redraw shell at tank cannon's tip
             t->shell_y = (fix) t->vertex_y-15*sin(RAD(t->angle));
-        }
-        // if projectile hits land
+        } // if projectile hits land, destroy land
         else if (land[(int)t->shell_x] <= t->shell_y) {
             tft_fillCircle((int)t->shell_x, (int) t->shell_y, 2, ILI9340_BLUE);
-            //Change land
-            destroy_land((int)t->shell_x);
-            //Redraw tanks so they follow the land changes
-            redraw_tanks();
-//            tft_fillTriangle((t1.x)-((t1.width)/2),t1.y, t1.x, t1.y-(t1.height), (t1.x)+((t1.width)/2), t1.y, ILI9340_WHITE);
-//            tft_drawLine(t1.vertex_x, t1.vertex_y, (int) t1.vertex_x+15*cos(RAD(t1.angle)), (int) t1.vertex_y - 15*sin(RAD(t1.angle)), ILI9340_WHITE);
+            destroy_land((int)t->shell_x); // destroy land
+            redraw_tanks(); // redraw tanks so they follow the land changes
             fire = 0;
             turn = 2 - turn + 1; // change turn
             printf("$04 %d\r", turn);
             t->shell_x = (fix) t->vertex_x+15*cos(RAD(t->angle));
             t->shell_y = (fix) t->vertex_y-15*sin(RAD(t->angle));
         }
-        
     }
     
     // explosion animation
     if(explosion == 1){
-        // red expanding circle
+        // draw red expanding circle
         tft_fillCircle((int)t->shell_x, (int) t->shell_y, (short)increment, ILI9340_RED);
         increment = increment + .5;
+
+        // end explosion animation
         if(increment == 20){
             //erase circle
             tft_fillCircle((int)t->shell_x, (int) t->shell_y, (short)increment, ILI9340_BLACK);
+
             // redraw land
             int i;
             for (i = t->shell_x - 21; i < t->shell_x + 22; i++){
                 tft_drawFastVLine(i, land[i], a_c(land[i]), ILI9340_BLUE);
             }
-            //redraw both tanks since explosion could cover both tanks
+            // redraw both tanks since explosion could cover both tanks
             redraw_tanks();
             explosion=0;
             increment =0;
@@ -422,33 +386,31 @@ static PT_THREAD (protothread_animate(struct pt *pt))
             turn = 2 - turn + 1; // change turn
             printf("$04 %d\r", turn);
         }
-           
     }
     
-    
-    //Game Over Scenario
+    // game over scenario: t1 health is 0
     if(t1.health == 0 && explosion==0){
         tft_fillScreen(ILI9340_BLACK);
-
         sprintf(buffer, "GAME OVER");
         printLine2(5, 20, 100, buffer, ILI9340_RED, ILI9340_BLACK);
         sprintf(buffer, "Player 2 wins!");
         printLine2(3, 20, 150, buffer, ILI9340_WHITE, ILI9340_BLACK);
-        end_screen =1;
+        end_screen = 1;
+
         // wait for user to start new game
         PT_YIELD_UNTIL(pt, new_game == 1);
         begin_time = PT_GET_TIME();
         restart_game();
     }
 
+    // game over scenario: t2 health is 0
     if(t2.health == 0 && explosion==0){
         tft_fillScreen(ILI9340_BLACK);
-
         sprintf(buffer, "GAME OVER");
         printLine2(5, 20, 100, buffer, ILI9340_RED, ILI9340_BLACK);
         sprintf(buffer, "Player 1 wins!");
         printLine2(3, 20, 150, buffer, ILI9340_WHITE, ILI9340_BLACK);
-        end_screen=1;
+        end_screen = 1;
 
         // wait for user to start new game
         PT_YIELD_UNTIL(pt, new_game == 1);
@@ -456,18 +418,12 @@ static PT_THREAD (protothread_animate(struct pt *pt))
         restart_game();
     }
 
-	// 30 fps => frame time of 33 mSec
-    // "B" and "G" code is for testing and is not needed to run simulation
-    
-    
-    //reset begin the time
-    //Yield every 33msec for 30FPS
+	// 30 FPS => frame time of 33 msec
+    // yield every 33 msec for 30 FPS
 	PT_YIELD_TIME_msec(33 - (PT_GET_TIME() - begin_time)) ;
-  } // end while
-
+  }
    PT_END(pt);
-} // end thread
-
+}
 
 
 // === outputs from python handler =============================================
@@ -495,6 +451,7 @@ int list_id, list_value ;
 // current string
 char receive_string[64];
 
+
 // === string input thread =====================================================
 // process text from python
 static PT_THREAD (protothread_python_string(struct pt *pt))
@@ -507,7 +464,6 @@ static PT_THREAD (protothread_python_string(struct pt *pt))
         PT_YIELD_UNTIL(pt, new_string==1);
         new_string = 0;
         // parse frequency command
-        //
         if (receive_string[0] == 'h'){
             // dds frequency
             printf("f number ...sets DDS freq integer range 0-10000\r");
@@ -518,14 +474,12 @@ static PT_THREAD (protothread_python_string(struct pt *pt))
             // default string
             printf("Any other string is just echoed back\r");
         }
-        //
         else {
-            //tft_printLine(1,0, receive_string, ILI9340_GREEN, ILI9340_BLACK, 2);
             printf("received>%s", receive_string);        
         }
-    } // END WHILE(1)   
+    }  
     PT_END(pt);  
-} // thread python_string
+}
 
 
 // === Python serial thread ====================================================
@@ -587,7 +541,6 @@ static PT_THREAD (protothread_serial(struct pt *pt))
             new_list = 1;
             list_id = PT_term_buffer[2] - '0' ;
             list_value = PT_term_buffer[3] - '0';
-            //printf("%d %d", list_id, list_value);
         }
         
         // radio group
@@ -595,7 +548,6 @@ static PT_THREAD (protothread_serial(struct pt *pt))
             new_radio = 1;
             radio_group_id = PT_term_buffer[2] - '0' ;
             radio_member_id = PT_term_buffer[3] - '0';
-            //printf("%d %d", radio_group_id, radio_member_id);
         }
         
         // string from python input line
@@ -606,47 +558,42 @@ static PT_THREAD (protothread_serial(struct pt *pt))
             // while striping off the '$'
             strcpy(receive_string, PT_term_buffer+1);
         }                                  
-        
-    } // END WHILE(1)   
+    }  
     PT_END(pt);  
-} // thread blink
-
+}
 
 
 // === Buttons thread ==========================================================
-// process buttons from Python for clear LCD and blink the on-board LED
 static PT_THREAD (protothread_buttons(struct pt *pt))
 {
     PT_BEGIN(pt);
-    // Set up buttons for bird sound inputs
 
     while(1){
-        //Yield until new button, when we aren't processing a projectile or collision
+        // yield until new button, when we aren't processing a projectile or collision
         PT_YIELD_UNTIL(pt, new_button==1 && fire == 0 && explosion==0);
         // clear flag
         new_button = 0;
         
-        //move left
+        // move left
         if (button_id==1 && button_value==1 && end_screen==0 && start_screen==0){
-            //only move tank whose turn it is
+            // only move tank whose turn it is
             if(steps > 0){
-                if(turn ==1){
-                    //sending the direction 1 == left
+                if(turn == 1){
+                    // setting the direction 1 == left
                     move_step(&t1,1);
                 }else{
                     move_step(&t2,1);
                 } 
                 steps -= 1;
                 printf("$01 %d\r", steps);
-            }
-            ///testing the writing a number when something happens------------------------------------------------------------------------
-            
+            }            
         }
-        //move right
+
+        // move right
         if (button_id==2 && button_value==1 && end_screen==0 && start_screen==0){
             if(steps > 0){
                 if(turn == 1){
-                    //sending the direction 2 == right
+                    //setting the direction 2 == right
                     move_step(&t1,2);
                 }else{
                     move_step(&t2,2);
@@ -655,34 +602,15 @@ static PT_THREAD (protothread_buttons(struct pt *pt))
                 printf("$01 %d\r", steps);
             }
         }
+
         // fire a projectile
         if (button_id==4 && button_value==1 && end_screen==0 && start_screen==0){
-//            if(turn == 1){
-//                fix midx =  (fix) t1.vertex_x+7.5*cos(RAD(t1.angle));
-//                fix midy =  (fix) t1.vertex_y+7.5*sin(RAD(t1.angle));
-//                if(!(t1.shell_y < land[(int)t1.shell_x] && midy > land[(int)midx])){
-//                    fire = 1;
-//                    steps = 5;
-//                    printf("$01 %d\r", steps);
-//                    t1.shell_vx = (fix) power*cos(RAD(t1.angle));
-//                    t1.shell_vy = (fix) -power*sin(RAD(t1.angle));
-//                }
-//            }
-//            else if(turn == 2){
-//                fix midx =  (fix) t2.vertex_x+7.5*cos(RAD(t2.angle));
-//                fix midy =  (fix) t2.vertex_y+7.5*sin(RAD(t2.angle));
-//                if(!(t2.shell_y < land[(int)t2.shell_x] && midy > land[(int)midx])){
-//                    fire = 1;
-//                    steps = 5;
-//                    printf("$01 %d\r", steps);
-//                    t2.shell_vx = (fix) power*cos(RAD(t2.angle));
-//                    t2.shell_vy = (fix) -power*sin(RAD(t2.angle));
-//                }
-//            }
-            fire = 1;
+            fire = 1; // set flag
             steps = 5;
           
             printf("$01 %d\r", steps);
+
+            // initialize correct tank's projectile velocity
             if(turn ==1){
                 t1.shell_vx = (fix) power*cos(RAD(t1.angle));
                 t1.shell_vy = (fix) -power*sin(RAD(t1.angle));
@@ -692,22 +620,20 @@ static PT_THREAD (protothread_buttons(struct pt *pt))
                 t2.shell_vy = (fix) -power*sin(RAD(t2.angle));
             }
         }
+
         // start a new game, only once we are at end screen
         if (button_id==3 && button_value==1 && end_screen==1 ){
             new_game = 1;
         }
-        
         if (button_id==5 && button_value==1 && start_screen==1){
             start_game = 1;
         }
-        
-        
-    } // END WHILE(1)   
+    }  
     PT_END(pt);  
-} // thread blink
+}
+
 
 // === Sliders Threads ==========================================================
-// process buttons from Python for clear LCD and blink the on-board LED
 static PT_THREAD (protothread_sliders(struct pt *pt))
 {
     PT_BEGIN(pt);
@@ -716,9 +642,8 @@ static PT_THREAD (protothread_sliders(struct pt *pt))
         // clear flag
         new_slider = 0;
        
-        //mPORTASetBits(BIT_0); 
         int new_ang;
-        if (slider_id == 1){ // change cannon angle
+        if (slider_id == 1){ // change correct tank cannon's angle
             new_ang = (int)slider_value;
             if(turn ==1){
                 aim_cannon(&t1,new_ang);
@@ -729,9 +654,10 @@ static PT_THREAD (protothread_sliders(struct pt *pt))
         else if (slider_id == 2){ // change power (in range 0 to 9))
             power = (fix)(9*((fix)slider_value))/((fix)100);
         }
-    } // END WHILE(1)   
+    }  
     PT_END(pt);  
-} // thread blink
+}
+
 
 // generate random land
 void rand_land_create(){
@@ -742,15 +668,18 @@ void rand_land_create(){
     float y = (float) a_c(land_height);
     float num;
     float m;
+
     // randomly generate line segments
     while (x < TFT_WIDTH) {
-        x += 30; //fixed x increase
-        // random y coordinate
+        x += 30; // increase x coordinate by fixed amount
+
+        // generate random y coordinate
         num = ((float) rand()) / RAND_MAX;
         y = (float) (TFT_HEIGHT-num*200);
         
-        // slope of this line segment
+        // compute slope of this line segment
         m = (y-prev_y)/30;
+
         // fill in land array with values
         int i;
         for (i = prev_x; i < x; i++) {
@@ -760,74 +689,47 @@ void rand_land_create(){
         prev_x = x;
         prev_y = y;
     }
-
-    
 }
 
+
+// function for drawing the game level's land
 void tft_draw_level(){
-    //Function for drawing the game level - initially is just a flat surface
     int i;
     rand_land_create();
     for(i = 0; i < 320; i++){
-//        if(i >= 100 && i < 160){
-//            land[i] = a_c(land_height+(i-100));
-//        }
-//        else if(i >= 160 && i < 220){
-//            land[i] = a_c(land_height + (220 - i));
-//        }
-//        else{
-//            land[i] = a_c(land_height);  
-//        }
         tft_drawFastVLine(i, land[i], a_c(land[i]), ILI9340_BLUE); 
     }
 }
 
+
+// converts y coordinates into bottom-left orientation, with origin at bottom
+// left instead of top left
 int a_c(int y_value){
-    //Converts y coordinates into bottom-left orientation, with origin at bottom
-    //left instead of top left
     return TFT_HEIGHT - y_value;
 }
 
 
 // === Main  ====================================================================================================================================
-
 void main(void) {
-    
-    //LED for debugging
-    mPORTASetPinsDigitalOut(BIT_0);    //Set port as output
-    //LED on
+    // LED for debugging
+    mPORTASetPinsDigitalOut(BIT_0); // set port as output
+    // LED on
     mPORTAClearBits(BIT_0); 
     
-    
-    
-
     // === setup system wide interrupts  ========
     INTEnableSystemMultiVectoredInt();
   
     // === TFT setup ============================
     // init the display in main since more than one thread uses it.
     // NOTE that this init assumes SPI channel 1 connections
-    
-//    srand((unsigned) time(&t));
     PT_setup();
-    //srand(56); //56
-
-
-    
-    
     tft_init_hw();
     tft_begin();
     tft_fillScreen(ILI9340_BLACK);
     //240x320 vertical display
     tft_setRotation(1); // Use tft_setRotation(1) for 320x240
 
-    // === config threads ========================
-
-//    time_t timer;
-//    
-//    sprintf(buffer, "%d ", (int) time(&timer));
-//    printLine(3, buffer, ILI9340_WHITE, ILI9340_BLACK);
-  
+    // === config threads ========================  
     // === identify the threads to the scheduler =====
     // add the thread function pointers to be scheduled
     // --- Two parameters: function_name and rate. ---
@@ -844,9 +746,7 @@ void main(void) {
     PT_INIT(&pt_sched) ;
     // >>> CHOOSE the scheduler method: <<<
     // (1)
-    // SCHED_ROUND_ROBIN just cycles thru all defined threads
-    //pt_sched_method = SCHED_ROUND_ROBIN ;
-  
+    // SCHED_ROUND_ROBIN just cycles thru all defined threads  
     // NOTE the controller must run in SCHED_ROUND_ROBIN mode
     // ALSO note that the scheduler is modified to cpy a char
     // from uart1 to uart2 for the controller
@@ -858,6 +758,4 @@ void main(void) {
     PT_SCHEDULE(protothread_sched(&pt_sched));
     // ============================================
   
-} // main
-// === end  ======================================================
-
+}
